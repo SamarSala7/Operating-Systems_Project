@@ -1,0 +1,426 @@
+/*
+ * dyn_block_management.c
+ *
+ *  Created on: Sep 21, 2022
+ *      Author: HP
+ */
+#include <inc/assert.h>
+#include <inc/string.h>
+#include "../inc/dynamic_allocator.h"
+
+
+//==================================================================================//
+//============================== GIVEN FUNCTIONS ===================================//
+//==================================================================================//
+
+//===========================
+// PRINT MEM BLOCK LISTS:
+//===========================
+
+void print_mem_block_lists()
+{
+	cprintf("\n=========================================\n");
+	struct MemBlock* blk ;
+	struct MemBlock* lastBlk = NULL ;
+	cprintf("\nFreeMemBlocksList:\n");
+	uint8 sorted = 1 ;
+	LIST_FOREACH(blk, &FreeMemBlocksList)
+	{
+		if (lastBlk && blk->sva < lastBlk->sva + lastBlk->size)
+			sorted = 0 ;
+		cprintf("[%x, %x)-->", blk->sva, blk->sva + blk->size) ;
+		lastBlk = blk;
+	}
+	if (!sorted)	cprintf("\nFreeMemBlocksList is NOT SORTED!!\n") ;
+
+	lastBlk = NULL ;
+	cprintf("\nAllocMemBlocksList:\n");
+	sorted = 1 ;
+	LIST_FOREACH(blk, &AllocMemBlocksList)
+	{
+		if (lastBlk && blk->sva < lastBlk->sva + lastBlk->size)
+			sorted = 0 ;
+		cprintf("[%x, %x)-->", blk->sva, blk->sva + blk->size) ;
+		lastBlk = blk;
+	}
+	if (!sorted)	cprintf("\nAllocMemBlocksList is NOT SORTED!!\n") ;
+	cprintf("\n=========================================\n");
+
+}
+
+//********************************************************************************//
+//********************************************************************************//
+
+//==================================================================================//
+//============================ REQUIRED FUNCTIONS ==================================//
+//==================================================================================//
+
+//===============================
+// [1] INITIALIZE AVAILABLE LIST:
+//===============================
+void initialize_MemBlocksList(uint32 numOfBlocks)
+{
+	 //initialize virtual memory size
+		   uint32 initialMemSize=0;
+		   //number of blocks
+		   int block=0;
+		   //List head should be Null
+		    AvailableMemBlocksList.lh_first=((void*) 0);
+		  //List initial size should be 0
+		  AvailableMemBlocksList.size=initialMemSize;
+		  //define initial list
+		  LIST_INIT(&AvailableMemBlocksList);
+		while(block<numOfBlocks){
+			//Insert to Head
+			LIST_INSERT_HEAD(&(AvailableMemBlocksList),&(MemBlockNodes[block]));
+			//increment MemBlock
+			block++;
+		}
+
+}
+
+//===============================
+// [2] FIND BLOCK:
+//===============================
+struct MemBlock *find_block(struct MemBlock_List *blockList, uint32 va)
+{
+
+	 // initialize block we want to find
+	  struct MemBlock *currentBlock;
+	  // search for currentBlock you want to find
+		LIST_FOREACH(currentBlock, blockList)
+		{
+			// check if start virtual address eqaul value
+			if(currentBlock->sva == va){
+				// if found return currentBlock
+				return currentBlock;
+			}
+		}
+		// else return NULL
+		return NULL;
+
+}
+
+//=========================================
+// [3] INSERT BLOCK IN ALLOC LIST [SORTED]:
+//=========================================
+void insert_sorted_allocList(struct MemBlock *blockToInsert)
+{
+	cprintf("AvailableMemBlocksList.size %x \n",AvailableMemBlocksList.size);
+
+	int size=AvailableMemBlocksList.size;
+	cprintf("AllocMemBlocksList.size %d  \n",AllocMemBlocksList.size);
+
+	int count=0;
+	//if AllocMemBlocksList is empty , set block in head of linkedlist
+	//or first Block is greater than insert Block ,set in head of linked list
+	if(AllocMemBlocksList.size==0 ||(AllocMemBlocksList.lh_first->sva>=blockToInsert->sva))
+	{
+		//insert blockToInsert to the head of functions Head
+		LIST_INSERT_HEAD(&AllocMemBlocksList,blockToInsert);
+	}
+
+	else{
+		//counter in loop
+		int count=0;
+		// initialize first MemBlockList list head
+		struct MemBlock *first =AllocMemBlocksList.lh_first;
+
+		while ( count<AllocMemBlocksList.size)
+		{
+			// initialize second MemBlockList list next element
+			struct MemBlock * secound=first->prev_next_info.le_next;
+            // check if second not found
+			if(secound==NULL){
+				// block insert in first element in MemBlock
+				if(first->sva>blockToInsert->sva){
+					secound=first;
+					first=blockToInsert;
+				}
+
+				else
+					// insert it to tail of MemBlock
+					LIST_INSERT_TAIL(&AllocMemBlocksList, blockToInsert);
+
+				break;
+			}
+			//frist is less than or equal blockinsert
+			// and secound is great or equal blockinsert
+			// set blockinsert between first and secound Block
+			else if((secound->sva>=blockToInsert->sva)&&(first->sva<=blockToInsert->sva)){
+				LIST_INSERT_BEFORE(&AllocMemBlocksList, secound,blockToInsert);
+				break;
+			}
+
+			first=secound;
+				count ++;
+		}
+
+	}
+
+
+
+cprintf("AllocMemBlocksList.size %d  \n",AllocMemBlocksList.size);
+cprintf("\n end \n ");
+}
+
+//=========================================
+// [4] ALLOCATE BLOCK BY FIRST FIT:
+//=========================================
+struct MemBlock *alloc_block_FF(uint32 size)
+{
+	struct MemBlock *first_element =FreeMemBlocksList.lh_first;
+		//res_block=NULL;
+		int i=0;
+		uint32 sizeOfFreeMemBlocksList=LIST_SIZE(&FreeMemBlocksList);
+
+		while(i<sizeOfFreeMemBlocksList){
+			struct MemBlock * secound_element=first_element->prev_next_info.le_next;
+			//Second Case : find block with exact size
+			  if(size==first_element->size){
+				  struct MemBlock* res_block;
+				  //save Block
+				  res_block=first_element;
+				  //remove element
+				  LIST_REMOVE(&FreeMemBlocksList ,first_element);
+				  //return Block
+				  return res_block;
+			  }
+			  //Third Case :
+			 	if(size<first_element->size){
+			 		//get first element in AvailableMemBlocksList
+			 		struct MemBlock* res_block=LIST_FIRST(&AvailableMemBlocksList);
+			 		LIST_REMOVE(&AvailableMemBlocksList, res_block);
+			        //new block
+			 		 res_block->size=size;
+			 		 res_block->sva=first_element->sva;
+			 	   //Update Block
+			 		first_element->size=first_element->size-size;
+			 		first_element->sva=first_element->sva+size;
+				   	return res_block;
+			 }
+			  else{
+				  i++;
+			 	  first_element=secound_element;
+			 	  }
+			  }
+		 //First Case : no suitable block
+		    return NULL;
+}
+
+//=========================================
+// [5] ALLOCATE BLOCK BY BEST FIT:
+//=========================================
+struct MemBlock *alloc_block_BF(uint32 size)
+{
+
+	int notfound=1;
+	struct MemBlock * MinSizeBlock;
+	struct MemBlock *first_element =FreeMemBlocksList.lh_first;
+	int count=0;
+	int i=0;
+	struct MemBlock nn;
+	nn.size=9000000;
+	MinSizeBlock=&nn;
+
+
+	//First Case : no suitable block
+	uint32 sz=LIST_SIZE(&FreeMemBlocksList);
+	while(i<sz){
+		struct MemBlock * secound_element=first_element->prev_next_info.le_next;
+
+
+			//Second Case : find block with exact size
+		if(size==first_element->size)
+		{
+			//struct MemBlock* res_block=first_element;
+			//res_block=first_element;
+			//remove element
+			LIST_REMOVE(&FreeMemBlocksList ,first_element);
+			return first_element;
+		}
+		if(first_element->size>size&&first_element->size<MinSizeBlock->size)
+		{
+					MinSizeBlock=first_element;
+					notfound=0;
+		}
+			//Third Case:
+
+			i++;
+			first_element=secound_element;
+		}
+
+		if(notfound==1){
+			return NULL;
+		}
+           // get last block
+			struct MemBlock* res_block=LIST_LAST(&AvailableMemBlocksList);
+			// get size of it
+			res_block->size=size;
+			res_block->sva=MinSizeBlock->sva;
+			//remove it
+			LIST_REMOVE(&AvailableMemBlocksList,res_block );
+			MinSizeBlock->size-=size;
+			MinSizeBlock->sva+=size;
+			return res_block;
+
+
+
+}
+
+
+//=========================================
+// [7] ALLOCATE BLOCK BY NEXT FIT:
+//=========================================
+struct MemBlock *alloc_block_NF(uint32 size)
+{
+	//TODO: [PROJECT MS1 - BONUS] [DYNAMIC ALLOCATOR] alloc_block_NF
+	// Write your code here, remove the panic and write your code
+	panic("alloc_block_NF() is not implemented yet...!!");
+
+
+}
+
+//===================================================
+// [8] INSERT BLOCK (SORTED WITH MERGE) IN FREE LIST:
+//===================================================
+
+void insert_sorted_with_merge_freeList(struct MemBlock *blockToInsert)
+{
+    // get first block in the list of MemBlocks
+	struct MemBlock *memFreeBlocks=FreeMemBlocksList.lh_first;
+	// get size of FreeMemBlocksList
+	int size = LIST_SIZE(&FreeMemBlocksList);
+
+	//empty free list
+	if(size==0)
+	{
+		//in this case insert block to head
+	   LIST_INSERT_HEAD(&FreeMemBlocksList,blockToInsert);
+	}
+		else if(size!=0)
+		{
+			int i=0;
+
+			while(i<size)
+			{
+
+				struct MemBlock MemBlockEmpty;
+				//set size of MemBlockEmpty equal 0
+				MemBlockEmpty.size=0;
+				//set start virtual address of MemBlockEmpty equal 0
+				MemBlockEmpty.sva=0;
+
+				//merge Free block
+				int mergememFreeBlocks=memFreeBlocks->size + memFreeBlocks->sva;
+				//merge BlockToInsert
+				int mergeBlockToInsert=(blockToInsert->size)+(blockToInsert->sva);
+
+				//merge with next
+				if(memFreeBlocks->sva == mergeBlockToInsert)
+				{
+
+				    int sumofSize=memFreeBlocks->size + blockToInsert->size;
+				    memFreeBlocks->size=sumofSize;
+					//set start virtual address of insert block to
+					//start virtual address of freeBLock
+					memFreeBlocks->sva=blockToInsert->sva;
+
+					//struct MemBlock * newBlock=&;
+					struct MemBlock *MemBlockEmpty=blockToInsert;
+					//set size of insert block equal 0
+					blockToInsert->size=0;
+					//set start virtual address of insert block equal 0
+					blockToInsert->sva=0;
+                     // insert it to head of MemBlock
+					LIST_INSERT_HEAD(&AvailableMemBlocksList, blockToInsert);
+					break;
+				}
+				//merge with pre and next
+			    if((memFreeBlocks->prev_next_info.le_next != NULL)&&
+			     // check if next free block start address mergeBlockToInsert
+				(memFreeBlocks->prev_next_info.le_next->sva ==mergeBlockToInsert) &&
+				(blockToInsert->sva == mergememFreeBlocks))
+			    {
+			    	// get size of next block
+			       int sizeofNextBlock=LIST_NEXT(memFreeBlocks)->size;
+			       int sizeofBlockToInsert=blockToInsert->size;
+				   memFreeBlocks->size +=  sizeofBlockToInsert +sizeofNextBlock;
+
+				   //set size of blocks  equal 0
+				   blockToInsert->size=0;
+				   //set start virtual address of block equal 0
+                   blockToInsert->sva=0;
+                    // get next Block info to remove it
+				   struct MemBlock *remove = memFreeBlocks->prev_next_info.le_next;
+
+				   //set size of blocks  equal 0
+				   remove->size=0;
+				   //set start virtual address of block equal 0
+				   remove->sva=0;
+
+				  // remove block that we make merge with it
+				   LIST_REMOVE(&FreeMemBlocksList,remove);
+				   // insert block to the head of MemBlock
+				   LIST_INSERT_HEAD(&AvailableMemBlocksList,blockToInsert);
+				  // insert block  remove to the head of block
+				   LIST_INSERT_HEAD(&AvailableMemBlocksList,remove);
+
+				   break;
+			     }
+
+
+				  // this case mege with perivuos
+				else if((memFreeBlocks->sva + memFreeBlocks->size ) == blockToInsert->sva)
+				 {
+
+				   	memFreeBlocks->size = memFreeBlocks->size + blockToInsert->size;
+					//set size of blocks  equal 0
+					blockToInsert->size=0;
+					//set start virtual address of block equal 0
+			        blockToInsert->sva=0;
+				   	//set block in head list
+				   	LIST_INSERT_HEAD(&AvailableMemBlocksList,blockToInsert);
+				   	break;
+				 }
+				// without merge
+			    // at first
+			    else if(FreeMemBlocksList.lh_first->sva > blockToInsert->sva)
+			    {
+			    	//insert BlockToInsert in first element of
+			    	//Linkedlist " FreeMemBlocksList"
+			    	LIST_INSERT_HEAD(&FreeMemBlocksList,blockToInsert);
+			    	break;
+			    }
+
+			     // at end
+			    else if(((blockToInsert->sva) > (FreeMemBlocksList.lh_first->sva)) &&
+			    		(memFreeBlocks->prev_next_info.le_next == NULL))
+			    {
+			    	//insert BlockToInsert in last element of
+			    	//Linkedlist " FreeMemBlocksList"
+			    	LIST_INSERT_TAIL(&FreeMemBlocksList,blockToInsert);
+			    	break;
+			    }
+
+			    // in between
+			    else if ((memFreeBlocks->prev_next_info.le_next->sva > mergeBlockToInsert)&&
+			    		 ( memFreeBlocks->sva < mergeBlockToInsert) &&
+			    		 (memFreeBlocks->prev_next_info.le_next != NULL))
+			   {
+			    	//insert BlockToInsert after memFreeBlocks
+			    		LIST_INSERT_AFTER(&FreeMemBlocksList,memFreeBlocks,blockToInsert);
+			    		break;
+			    }
+
+
+				 i++;
+				 //get Next element in linkedlist
+				 memFreeBlocks=memFreeBlocks->prev_next_info.le_next;
+			}
+	}
+
+}
+
+
+
