@@ -1,0 +1,72 @@
+uint32 start = KERNEL_HEAP_START;
+uint32 address[100];
+int num_of_frames[100];
+int count_a=0;
+
+void* kmalloc(unsigned int size)
+{
+	//TODO: [PROJECT MS2] [KERNEL HEAP] kmalloc
+	// your code is here, remove the panic and write your code
+	//kpanic_into_prompt("kmalloc() is not implemented yet...!!");
+
+	//NOTE: All kernel heap allocations are multiples of PAGE_SIZE (4KB)
+	//refer to the project presentation and documentation for details
+	// use "isKHeapPlacementStrategyFIRSTFIT() ..." functions to check the current strategy
+
+	//change this "return" according to your answer
+
+	    uint32 *s=(uint32 *)start;
+		address[count_a]=start;
+		size = ROUNDUP(size,PAGE_SIZE);
+		int count_f=0;
+		if(size>=(KERNEL_HEAP_MAX-start))
+		{
+			return NULL;
+		}
+		for(int i = 0;i < size;i+=PAGE_SIZE)
+		{
+		   //get_frame_info(uint32 *ptr_page_directory, uint32 virtual_address, uint32 **ptr_page_table)
+           //struct FrameInfo
+		   uint32 *ptr_page_table=NULL;
+		   struct FrameInfo * ptr_frame_info = get_frame_info(ptr_page_directory,start,&ptr_page_table);
+		   int ret1 = allocate_frame(&ptr_frame_info);
+		   if (ret1 == E_NO_MEM)
+		   {
+			  cprintf("No enough memory for page itself.\n");
+			  return NULL;
+		    }
+		    int ret2 = map_frame(ptr_page_directory,ptr_frame_info,start,PERM_WRITEABLE);
+		    if (ret2 == E_NO_MEM)
+		    {
+			  cprintf("No enough memory for page table.\n");
+			  free_frame(ptr_frame_info) ;
+			  return NULL;
+		    }
+		    start+=PAGE_SIZE;
+		    count_f++;
+		}
+		num_of_frames[count_a]=count_f;
+		count_a++;
+		return s;
+}
+
+void kfree(void* virtual_address)
+{
+	//TODO: [PROJECT MS2] [KERNEL HEAP] kfree
+	// Write your code here, remove the panic and write your code
+    //panic("kfree() is not implemented yet...!!");
+
+	uint32 va = (uint32 )(virtual_address);
+		for(int i = 0;i <= count_a;i++)
+		{
+			if(virtual_address==(void *)address[i])
+			{
+				for(int j = 0;j < num_of_frames[i];j++)
+				{
+				   unmap_frame(ptr_page_directory,va);
+				   va+=PAGE_SIZE;
+				}
+			}
+		}
+
+}
